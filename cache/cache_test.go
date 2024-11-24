@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -36,5 +38,45 @@ func TestCache_ConfirmEviction(t *testing.T) {
 	if err == nil {
 		t.Errorf("Eviction not working")
 	}
+}
+
+func TestCacheConcurrency(t *testing.T) {
+
+	c := NewCache(5)
+	var wg sync.WaitGroup
+
+	numOperations := 100
+	numGoroutines := 10
+
+	setWorker := func(workerId int) {
+		defer wg.Done()
+		for i := 0; i < numOperations; i++ {
+			key := "key_" + strconv.Itoa(workerId) + strconv.Itoa(i)
+			c.Set(key, i)
+		}
+	}
+
+	getWorker := func(workerId int) {
+		defer wg.Done()
+		for i := 0; i < numOperations; i++ {
+			key := "key_" + strconv.Itoa(workerId) + strconv.Itoa(i)
+			c.Get(key)
+		}
+	}
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go setWorker(i)
+		wg.Add(1)
+		go getWorker(i)
+	}
+
+	wg.Wait()
+
+	if len(c.data) > c.cap {
+		t.Errorf("Cache exceeded capacity: got %d items, expected at most %d", len(c.data), c.cap)
+	}
+
+	t.Log("All operations completed successfully.")
 
 }

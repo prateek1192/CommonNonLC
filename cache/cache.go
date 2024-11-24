@@ -1,6 +1,9 @@
 package cache
 
-import "errors"
+import (
+	"errors"
+	"sync"
+)
 
 func NewCache(capacity int) *Cache {
 
@@ -8,11 +11,14 @@ func NewCache(capacity int) *Cache {
 		data:      make(map[string]interface{}),
 		cap:       capacity,
 		evictList: nil,
+		mutex:     sync.RWMutex{},
 	}
 }
 
 func (c *Cache) Set(key string, value interface{}) {
 
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	if len(c.data) == c.cap {
 		c.evict()
 	}
@@ -30,11 +36,19 @@ func (c *Cache) evict() {
 }
 
 func (c *Cache) Get(key string) (interface{}, error) {
-	if value, exists := c.data[key]; exists {
-		c.track(key)
-		return value, nil
+	c.mutex.RLock()
+	value, exists := c.data[key]
+	c.mutex.RUnlock()
+
+	if !exists {
+		return nil, errors.New("key not found")
 	}
-	return nil, errors.New("key not found")
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.track(key)
+	return value, nil
+
 }
 
 func (c *Cache) track(key string) {
